@@ -1,0 +1,31 @@
+services:
+  api:
+    build:
+      context: ./api-gateway
+    ports:
+      -
+    networks:
+      - livecnet
+  aic:
+    build:
+      context: ./services/AI-Client service
+    ports:
+      -
+    networks:
+      - livecnet
+  notification:
+    build:
+      context: ./services/notification service
+    ports:
+      -
+    networks:
+      - livecnet
+  payment:
+    build:
+      context: ./services/payment service
+    ports:
+      -
+    networks:
+      - livecnet
+networks:
+  livecnet:
