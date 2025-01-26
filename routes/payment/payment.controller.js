@@ -25,7 +25,7 @@ const orderToPaymob = async (data) => {
     try {
         const {data: response} = await axios.post(PAYMOB_INTENTION_URL, payload, {
             headers: {
-                Authorization : (`token ${PAYMOB_TOKEN}`),
+                Authorization : (`Bearer ${PAYMOB_TOKEN}`),
                 'Content-Type' : 'application/json'
             }
         })

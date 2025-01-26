@@ -2,7 +2,7 @@ const { clientsByIdType, clientsBySocket } = require('../../routes/notifications
 const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
 const { saveUndeliveredNotificationToMap,
-    getUndeliveredNotificationsFromMap } = require('../../routes/notifications/models/undelivered_Notifications');
+        getUndeliveredNotificationsFromMap } = require('../../routes/notifications/models/undelivered_Notifications');
 const { updateFcmToken, getFcmTokenByUserId } = require('../../routes/notifications/models/FCMToken');
 require('dotenv').config();
 
@@ -12,6 +12,7 @@ let io;
 admin.initializeApp({
     credential: admin.credential.cert(require('../../serviceAccounts.json'))
 });
+
 
 // Validate token
 function validateToken(token) {
