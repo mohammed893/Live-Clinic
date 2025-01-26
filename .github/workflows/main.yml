@@ -1,0 +1,104 @@
+name: The Main pipeline
+
+on:
+  push:
+    branches:
+      - main
+jobs:
+  deploy:
+    environment: env 
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Login to AWS ECR
+        env:
+          AWS_REGION: eu-central-1
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_MY_ID }}
+        run: |
+          aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+      - name: Build and push Docker image
+        env:
+          IMAGE_TAG: latest
+          AWS_REGION: eu-central-1
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_MY_ID }}
+        run: |
+          docker build -t liveclinic:$IMAGE_TAG .
+          docker tag liveclinic:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/liveclinic:$IMAGE_TAG
+          docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/liveclinic:$IMAGE_TAG
+      
+      - name: Wait For the test    # Testing :)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build --if-present
+      # - run: npm test
+
+      - name: SSH to EC2 and deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          debug: true
+          script: |
+            
+            echo "Setting AWS credentials..."
+            export AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}
+            export AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            export AWS_REGION=eu-central-1
+            export TheRamz=${{ secrets.ACCESS_TOKEN_SECRET}}
+            
+            echo "Logging into AWS ECR..."
+            aws ecr get-login-password --region eu-central-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_MY_ID }}.dkr.ecr.eu-central-1.amazonaws.com
+            
+            if [ $? -ne 0 ]; then
+             echo "AWS ECR login failed"
+             exit 1
+            fi
+            
+            echo "Pulling Docker image..."
+            docker pull ${{ secrets.AWS_MY_ID }}.dkr.ecr.eu-central-1.amazonaws.com/liveclinic:latest
+            
+            if [ $? -ne 0 ]; then
+              echo "Failed to pull Docker image"
+              exit 1
+            fi
+            
+            echo "Stopping and removing existing container if it exists..."
+            if [ "$(docker ps -q -f name=liveclinicc)" ]; then
+              docker stop liveclinicc
+            fi
+            
+            if [ "$(docker ps -a -q -f name=liveclinicc)" ]; then
+              docker rm liveclinicc
+            fi
+
+            echo "Running new Docker container..."
+            docker run --log-driver=awslogs --log-opt awslogs-region=eu-central-1 --log-opt awslogs-group=docker-logs --log-opt awslogs-stream=docker-logtream -d --name liveclinicc -p 3000:3000 -v liveclinicdb:/var/lib/postgresql/data ${{ secrets.AWS_MY_ID }}.dkr.ecr.eu-central-1.amazonaws.com/liveclinic:latest
+            
+            if [ $? -ne 0 ]; then
+              echo "Failed to run Docker container"
+              exit 1
+            fi
+
+            echo "Removing the Dead Image"
+            docker image prune -f
+
+            # echo "Adding the .env file"
+            # docker exec -e TheRamz=$TheRamz liveclinicc /bin/sh -c 'echo "ACCESS_TOKEN_SECRET=${TheRamz}" > .env'
