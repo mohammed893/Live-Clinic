@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "start": "node server.js",
+    "watch": "nodemon server.js",
+    "dev": "nodemon server.js",
+    "test": "jest",
+    "test-watch": "jest --watchAll"
+  },
   "dependencies": {
     "pg": "^8.13.1",
     "agora-access-token": "^2.0.4",

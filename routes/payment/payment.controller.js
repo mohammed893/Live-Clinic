@@ -1,7 +1,12 @@
 const crypto = require('crypto');
 const axios = require('axios');
-const { pool } = require('../../model/configration');
-const { PAYMOB_INTERGRATION_ID, PAYMOB_HMAC_KEY, PAYMOB_INTENTION_URL, PAYMOB_TOKEN, PAYMOB_PUBLIC_KEY} = process.env; 
+const { pool } = require('../../model/configration'); 
+require('dotenv').config(); 
+const PAYMOB_HMAC_SECRET = process.env.PAYMOB_HMAC_SECRET;
+const PAYMOB_INTENTION_URL = process.env.PAYMOB_INTENTION_URL;
+const PAYMOB_TOKEN = process.env.PAYMOB_TOKEN;
+const PAYMOB_INTERGRATION_ID = parseInt(process.env.PAYMOB_INTERGRATION_ID);
+const PAYMOB_PUBLIC_KEY = process.env.PAYMOB_PUBLIC_KEY;
 const { fetchData, callUpdateBilling } = require('./databaseOperations')
 
 const computedHMAC = (data, secret) => {
@@ -31,7 +36,6 @@ const orderToPaymob = async (data) => {
         })
         return response;
     }catch (err) {
-        // console.log(PAYMOB_INTENTION_URL);
         console.error('Error sending data to Paymob:', err.message);
         throw err;
     }
@@ -64,9 +68,9 @@ const handleCallback = async(req, res) => {
             callbackData.obj.success,
         ].join('');
 
-        const computeHMAC = computedHMAC(dataToHash, PAYMOB_HMAC_KEY)
+        const computeHMAC = computedHMAC(dataToHash, PAYMOB_HMAC_SECRET)
         if(computeHMAC !== receivedHmac){
-            return res.status(403).json({message : 'Invalid HMAC signature', error: err.message});
+            return res.status(403).json({message : 'Invalid HMAC signature'});
         }
         if (callbackData.obj.success == true)
             newStatus = 'paid';
@@ -106,7 +110,7 @@ const makeOrder = async(req, res) => {
         const clientSecret = paymobResponse.client_secret;
 
         const addBilling = await pool.query(`SELECT addnewbilling($1, $2, $3, $4, $5, $6, $7, $8)`, 
-            [userId, doctorId, slot_id, appointment_date, consultation_type, amount, clientSecret, orderId,])
+            [userId, doctorId, slot_id, appointment_date, consultation_type, amount, clientSecret, orderId])
 
         if(!addBilling.rows[0].addnewbilling){
             return res.status(400).json({
