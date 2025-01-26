@@ -10,7 +10,7 @@ let io;
 
 // Initialize Firebase Admin SDK
 admin.initializeApp({
-    credential: admin.credential.cert(require('../../serviceAccounts.json'))
+    credential: admin.credential.cert(require('../../serviceAccount.json'))
 });
 
 
