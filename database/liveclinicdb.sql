@@ -39,17 +39,19 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+-- Name: public; Type: SCHEMA; Schema: -; Owner: pg_database_owner
 --
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+CREATE SCHEMA public;
 
+
+ALTER SCHEMA public OWNER TO pg_database_owner;
 
 --
--- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: pg_database_owner
 --
 
-COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
+COMMENT ON SCHEMA public IS 'standard public schema';
 
 
 --
@@ -953,6 +955,32 @@ CREATE SEQUENCE public.appointments_appointment_id_seq
 
 ALTER SEQUENCE public.appointments_appointment_id_seq OWNER TO postgres;
 
+SET default_table_access_method = heap;
+
+--
+-- Name: appointments_partition; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.appointments_partition (
+    doctor_id integer NOT NULL,
+    patient_id integer NOT NULL,
+    slot_id integer NOT NULL,
+    status public.appointment_status NOT NULL,
+    cancellation_reason text,
+    cancellation_timestamp timestamp with time zone,
+    consultation_notes text,
+    appointment_date date NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    consultation_type public.consultation_type_enum NOT NULL,
+    token character varying,
+    "channelName" character varying,
+    paid boolean DEFAULT false NOT NULL,
+    CONSTRAINT cancellation_data_check CHECK ((((status = 'canceled'::public.appointment_status) AND (cancellation_reason IS NOT NULL) AND (cancellation_timestamp IS NOT NULL)) OR ((status <> 'canceled'::public.appointment_status) AND (cancellation_reason IS NULL) AND (cancellation_timestamp IS NULL))))
+);
+
+
+ALTER TABLE public.appointments_partition OWNER TO postgres;
+
 --
 -- Name: billings; Type: TABLE; Schema: public; Owner: postgres
 --
@@ -962,7 +990,6 @@ CREATE TABLE public.billings (
     doctor_id integer NOT NULL,
     price numeric(10,2) NOT NULL,
     billing_date date DEFAULT CURRENT_DATE NOT NULL,
-    payment_date date,
     payment_status public.payment_status_enum DEFAULT 'pending'::public.payment_status_enum NOT NULL,
     payment_method public.payment_method_enum,
     notes character varying(255),
@@ -974,6 +1001,26 @@ PARTITION BY RANGE (billing_date);
 
 
 ALTER TABLE public.billings OWNER TO postgres;
+
+--
+-- Name: billings_partition; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.billings_partition (
+    patient_id integer NOT NULL,
+    doctor_id integer NOT NULL,
+    price numeric(10,2) NOT NULL,
+    billing_date date DEFAULT CURRENT_DATE NOT NULL,
+    payment_status public.payment_status_enum DEFAULT 'pending'::public.payment_status_enum NOT NULL,
+    payment_method public.payment_method_enum,
+    notes character varying(255),
+    paymentkey character varying,
+    order_id character varying,
+    appointment_date date NOT NULL
+);
+
+
+ALTER TABLE public.billings_partition OWNER TO postgres;
 
 --
 -- Name: bookinghistory_history_id_seq; Type: SEQUENCE; Schema: public; Owner: postgres
@@ -989,8 +1036,6 @@ CREATE SEQUENCE public.bookinghistory_history_id_seq
 
 
 ALTER SEQUENCE public.bookinghistory_history_id_seq OWNER TO postgres;
-
-SET default_table_access_method = heap;
 
 --
 -- Name: booking_history; Type: TABLE; Schema: public; Owner: postgres
@@ -1162,11 +1207,65 @@ CREATE TABLE public.time_slots (
 ALTER TABLE public.time_slots OWNER TO postgres;
 
 --
+-- Name: appointments_partition; Type: TABLE ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.appointments ATTACH PARTITION public.appointments_partition DEFAULT;
+
+
+--
+-- Name: billings_partition; Type: TABLE ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.billings ATTACH PARTITION public.billings_partition DEFAULT;
+
+
+--
+-- Name: appointments unique_appointment; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.appointments
+    ADD CONSTRAINT unique_appointment UNIQUE (doctor_id, patient_id, slot_id, appointment_date, token);
+
+
+--
+-- Name: appointments_partition appointments_partition_doctor_id_patient_id_slot_id_appoint_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.appointments_partition
+    ADD CONSTRAINT appointments_partition_doctor_id_patient_id_slot_id_appoint_key UNIQUE (doctor_id, patient_id, slot_id, appointment_date, token);
+
+
+--
 -- Name: appointments appointments_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
 ALTER TABLE ONLY public.appointments
     ADD CONSTRAINT appointments_pkey PRIMARY KEY (doctor_id, patient_id, appointment_date);
+
+
+--
+-- Name: appointments_partition appointments_partition_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.appointments_partition
+    ADD CONSTRAINT appointments_partition_pkey PRIMARY KEY (doctor_id, patient_id, appointment_date);
+
+
+--
+-- Name: billings unique_billing; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.billings
+    ADD CONSTRAINT unique_billing UNIQUE (paymentkey, order_id, billing_date, appointment_date);
+
+
+--
+-- Name: billings_partition billings_partition_paymentkey_order_id_billing_date_appoint_key; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.billings_partition
+    ADD CONSTRAINT billings_partition_paymentkey_order_id_billing_date_appoint_key UNIQUE (paymentkey, order_id, billing_date, appointment_date);
 
 
 --
@@ -1226,22 +1325,6 @@ ALTER TABLE ONLY public.time_slots
 
 
 --
--- Name: appointments unique_appointment; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.appointments
-    ADD CONSTRAINT unique_appointment UNIQUE (doctor_id, patient_id, slot_id, appointment_date, token);
-
-
---
--- Name: billings unique_billing; Type: CONSTRAINT; Schema: public; Owner: postgres
---
-
-ALTER TABLE ONLY public.billings
-    ADD CONSTRAINT unique_billing UNIQUE (paymentkey, order_id, billing_date, appointment_date);
-
-
---
 -- Name: doctors unique_doctors_email; Type: CONSTRAINT; Schema: public; Owner: postgres
 --
 
@@ -1255,6 +1338,62 @@ ALTER TABLE ONLY public.doctors
 
 ALTER TABLE ONLY public.patients
     ADD CONSTRAINT unique_patients_email UNIQUE (email);
+
+
+--
+-- Name: idx_appointments_appointment_date; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_appointments_appointment_date ON ONLY public.appointments USING btree (doctor_id, appointment_date);
+
+
+--
+-- Name: appointments_partition_doctor_id_appointment_date_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX appointments_partition_doctor_id_appointment_date_idx ON public.appointments_partition USING btree (doctor_id, appointment_date);
+
+
+--
+-- Name: idx_appointments_patient_date; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_appointments_patient_date ON ONLY public.appointments USING btree (patient_id, appointment_date);
+
+
+--
+-- Name: appointments_partition_patient_id_appointment_date_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX appointments_partition_patient_id_appointment_date_idx ON public.appointments_partition USING btree (patient_id, appointment_date);
+
+
+--
+-- Name: idx_appointments_status; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX idx_appointments_status ON ONLY public.appointments USING btree (status);
+
+
+--
+-- Name: appointments_partition_status_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX appointments_partition_status_idx ON public.appointments_partition USING btree (status);
+
+
+--
+-- Name: payment_status_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX payment_status_idx ON ONLY public.billings USING btree (payment_status);
+
+
+--
+-- Name: billings_partition_payment_status_idx; Type: INDEX; Schema: public; Owner: postgres
+--
+
+CREATE INDEX billings_partition_payment_status_idx ON public.billings_partition USING btree (payment_status);
 
 
 --
@@ -1276,27 +1415,6 @@ CREATE INDEX consultation_records_patient_id_idx ON public.consultation_records 
 --
 
 CREATE INDEX doctors_experience_idx ON public.doctors USING btree (experience);
-
-
---
--- Name: idx_appointments_appointment_date; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_appointments_appointment_date ON ONLY public.appointments USING btree (doctor_id, appointment_date);
-
-
---
--- Name: idx_appointments_patient_date; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_appointments_patient_date ON ONLY public.appointments USING btree (patient_id, appointment_date);
-
-
---
--- Name: idx_appointments_status; Type: INDEX; Schema: public; Owner: postgres
---
-
-CREATE INDEX idx_appointments_status ON ONLY public.appointments USING btree (status);
 
 
 --
@@ -1328,10 +1446,52 @@ CREATE INDEX idx_time_slots ON public.time_slots USING btree (doctor_id, slot_st
 
 
 --
--- Name: payment_status_idx; Type: INDEX; Schema: public; Owner: postgres
+-- Name: appointments_partition_doctor_id_appointment_date_idx; Type: INDEX ATTACH; Schema: public; Owner: postgres
 --
 
-CREATE INDEX payment_status_idx ON ONLY public.billings USING btree (payment_status);
+ALTER INDEX public.idx_appointments_appointment_date ATTACH PARTITION public.appointments_partition_doctor_id_appointment_date_idx;
+
+
+--
+-- Name: appointments_partition_doctor_id_patient_id_slot_id_appoint_key; Type: INDEX ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER INDEX public.unique_appointment ATTACH PARTITION public.appointments_partition_doctor_id_patient_id_slot_id_appoint_key;
+
+
+--
+-- Name: appointments_partition_patient_id_appointment_date_idx; Type: INDEX ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER INDEX public.idx_appointments_patient_date ATTACH PARTITION public.appointments_partition_patient_id_appointment_date_idx;
+
+
+--
+-- Name: appointments_partition_pkey; Type: INDEX ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER INDEX public.appointments_pkey ATTACH PARTITION public.appointments_partition_pkey;
+
+
+--
+-- Name: appointments_partition_status_idx; Type: INDEX ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER INDEX public.idx_appointments_status ATTACH PARTITION public.appointments_partition_status_idx;
+
+
+--
+-- Name: billings_partition_payment_status_idx; Type: INDEX ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER INDEX public.payment_status_idx ATTACH PARTITION public.billings_partition_payment_status_idx;
+
+
+--
+-- Name: billings_partition_paymentkey_order_id_billing_date_appoint_key; Type: INDEX ATTACH; Schema: public; Owner: postgres
+--
+
+ALTER INDEX public.unique_billing ATTACH PARTITION public.billings_partition_paymentkey_order_id_billing_date_appoint_key;
 
 
 --
