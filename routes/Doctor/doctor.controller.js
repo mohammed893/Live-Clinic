@@ -51,8 +51,8 @@ const updateDoctor = async (req, res) => {
     const doctor_id = req.userID;
 
     // Check if the doctor exists
-    const result = await pool.query(`SELECT COUNT(*) FROM doctors WHERE doctor_id = $1`, [doctor_id]);
-    if (parseInt(result.rows[0].count, 10) === 0) {
+    const result = await pool.query(`SELECT COUNT(*) As count FROM doctors WHERE doctor_id = $1`, [doctor_id]);
+    if (result.rows[0].count == 0) {
         return res.status(404).json({ message: `Doctor with ID ${doctor_id} Not Found!` });
     }
 
