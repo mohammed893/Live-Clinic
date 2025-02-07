@@ -1,106 +1,43 @@
-const { clientsByIdType, clientsBySocket } = require('../../routes/notifications/models/Maps');
-const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
 const { saveUndeliveredNotificationToMap,
-        getUndeliveredNotificationsFromMap } = require('../../routes/notifications/models/undelivered_Notifications');
-const { updateFcmToken, getFcmTokenByUserId } = require('../../routes/notifications/models/FCMToken');
-require('dotenv').config();
+        getUndeliveredNotificationsFromMap } = require('./models/undelivered_Notifications');
+const { updateFcmToken, getFcmTokenByUserId } = require('./FCMToken');
+const {sendSocketNotification} = require('./socket.controller')
+const {pool} = require('../../model/configration')
 
-let io;
+async function isUserExist(id, type){
+    try {
+        let query = type === 'd' 
+            ? `SELECT COUNT(*) AS count FROM doctors WHERE doctor_id = $1 `
+            : `SELECT COUNT(*) AS count FROM patients WHERE patient_id = $1;`
 
+        const { rows } = await pool.query(query, [id]);
+        return rows[0].count > 0;
+    } catch (err) {
+        console.error('Error checking user existence:', err.message);
+        return false;
+    }
+}
 // Initialize Firebase Admin SDK
 admin.initializeApp({
     credential: admin.credential.cert(require('../../serviceAccount.json'))
 });
 
-
-// Validate token
-function validateToken(token) {
-    try {
-        const secretKey = process.env.ACCESS_TOKEN_SECRET;
-        const decoded = jwt.verify(token, secretKey);
-        return decoded;
-    } catch (err) {
-        console.error('Token validation failed:', err.message);
-        return null; 
-    }
-}
-
-// Handle a new connection
-function handleSocketConnection(socket) {
-    console.log('A user connected with socket ID:', socket.id);
-
-    socket.on('user_id', (data) => {
-        const { id, type, token } = data;
-
-        if (!id || !type || !token) {
-            console.error('Invalid data received:', data);
-            socket.emit('logout', { message: 'Invalid data received' });
-            socket.disconnect();
-            return;
-        }
-
-        // Validate the token
-        const decodedToken = validateToken(token);
-
-        if (decodedToken) {
-            console.log('Token validated successfully for user:', id);
-
-            const key = `${id}-${type}`;
-            clientsByIdType.set(key, socket.id);
-            clientsBySocket.set(socket.id, { id, type });
-
-            console.log(`User ${id} of type ${type} connected and authenticated`);
-        } else {
-            console.log('Token validation failed for user:', id);
-            socket.emit('logout', { message: 'Authentication failed. Please log in again.' });
-            socket.disconnect();
-        }
-    });
-
-    // Handle disconnection
-    socket.on('disconnect', () => {
-        console.log('User disconnected:', socket.id);
-
-        const clientData = clientsBySocket.get(socket.id);
-        if (clientData) {
-            const key = `${clientData.id}-${clientData.type}`;
-            clientsByIdType.delete(key);
-            clientsBySocket.delete(socket.id);
-        }
-    });
-}
-
-// Send notification via Socket.io
-async function sendSocketNotification(id, type, notification) {
-    const key = `${id}-${type}`;
-    const socketId = clientsByIdType.get(key);
-
-    if (socketId && clientsBySocket.has(socketId)) {
-        try {
-            io.to(socketId).emit('notification', notification);
-            console.log(`Notification sent via Socket.IO to user ${id}`);
-            return true;
-        } catch (err) {
-            console.error(`Socket.IO notification failed for user ${id}:`, err.message);
-        }
-    }
-    return false;
-}
-
-// Send notification via FCM
+// Send notification via FCM 
 async function sendFcmNotification(id, type, notification) {
     try {
-        const key = `${id}-${type}`; 
-        const fcmToken = await getFcmTokenByUserId(key);
+        const fcmToken = await getFcmTokenByUserId(id, type);
         if (fcmToken) {
             const message = {
                 token: fcmToken,
                 notification: {
                     title: notification.title,
-                    body: notification.body,
+                    body: notification.body
                 },
-                data: notification.data || {},
+                data: {
+                    message: notification.message || '',
+                    payload: JSON.stringify(notification.payload || {})
+                }
             };
             await admin.messaging().send(message);
             console.log(`Notification sent via FCM to user ${id}`);
@@ -125,13 +62,37 @@ async function sendNotification(id, type, notification) {
     }
 }
 
+const routeForsendNotification = async (req,res) => {
+    const { id, type, notification } = req.body;
+
+    if (!(await isUserExist(id, type))){
+        return res.status(404).json({message: `User With ID ${id} and type ${type} Not Found`})
+    }
+
+    if (!notification) {
+        return res.status(400).json({ message: 'Invalid Notification data' });
+    }
+
+    try {
+        await sendNotification( id, type, notification);
+        res.status(200).json({ message: 'Notification sent successfully' });
+    } catch (err) {
+        console.error('Error sending notification:', err.message);
+        res.status(500).json({ message: 'Failed to send notification' });
+    }
+}
+
 // API to update FCM token
 async function resetFcmToken(req, res) {
-    const { id, type, fcmToken } = req.body;
-    // const id = req.userID;
+    const { fcmToken } = req.body;
+    const id = req.userID;
+    const type = req.userType;
 
-    if (!id || !type || !fcmToken) {
-        return res.status(400).json({ message: 'Invalid input data' });
+    if (!(await isUserExist(id, type))){
+        return res.status(404),json({message: `User With ID ${id} and type ${type} Not Found`})
+    }
+    if (!fcmToken){
+        return res.status(400).json({message: 'Invalid fcm token'})
     }
 
     try {
@@ -146,9 +107,13 @@ async function resetFcmToken(req, res) {
 //to get undelivered notifications
 async function getUndeliveredNotificationsHandler(req, res) {
     try {
-        const {id, type} = req.body; 
-        const key = `${id}-${type}`;
-        const notifications = getUndeliveredNotificationsFromMap(key);
+        // const {id, type} = req.body; 
+        const id = req.userID;
+        const type = req.userType;
+        if (!(await isUserExist(id, type))){
+            return res.status(404),json({message: `User With ID ${id} and type ${type} Not Found`})
+        }
+        const notifications = getUndeliveredNotificationsFromMap(id, type);
         res.status(200).json({ notifications });
     } catch (err) {
         console.error('Error retrieving undelivered notifications:', err.message);
@@ -156,24 +121,8 @@ async function getUndeliveredNotificationsHandler(req, res) {
     }
 }
 
-// Initialize Socket.io
-function initializeSocket(server) {
-    io = require('socket.io')(server, {
-        cors: {
-            origin: '*',
-            methods: ['GET', 'POST'],
-        },
-    });
-
-    console.log('Socket initialized');
-    io.on('connection', (socket) => {
-        handleSocketConnection(socket);
-    });
-}
-
 module.exports = {
-    initializeSocket,
-    sendNotification,
+    routeForsendNotification,
     resetFcmToken,
     getUndeliveredNotificationsHandler,
 };

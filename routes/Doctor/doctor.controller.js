@@ -3,7 +3,7 @@ const {pool} = require('../../model/configration');
 // Get all doctors
 const getAllDoctors = async (req, res) => {
     try {
-        const allDoctors = await pool.query('SELECT * FROM doctors');
+        const allDoctors = await pool.query('SELECT full_name, hospital, specialization, experience, available_days, working_hours FROM doctors');
         return res.status(200).json(allDoctors.rows);
     } catch (error) {
         console.error(error);
@@ -13,10 +13,14 @@ const getAllDoctors = async (req, res) => {
 
 // Get a doctor
 const getDoctor = async (req, res) => {
-    const doctor_id = req.userID; // get id from token 
+    const {doctor_id} = req.params;  
     console.log(doctor_id)
     try {
-        const doctor = await pool.query('SELECT * FROM doctors WHERE doctor_id = $1', [doctor_id]);
+        doctor_id = parseInt(doctor_id, 10);
+    if (isNaN(doctor_id)) {
+        return res.status(400).json({ error: 'Invalid doctor ID' });
+    }
+        const doctor = await pool.query('SELECT full_name, hospital, specialization, experience, available_days, working_hours FROM doctors WHERE doctor_id = $1', [doctor_id]);
         if (doctor.rows.length === 0) {
             return res.status(404).json({ error: 'Doctor not found' });
         }
@@ -45,12 +49,16 @@ const deleteDoctor = async (req, res) => {
 // Update a doctor
 const updateDoctor = async (req, res) => {
     const doctor_id = req.userID;
-    if (!doctor_id) {
-        return res.status(400).json({ error: 'Invalid doctor ID' });
-    }
-    const updates = req.body;
 
-    const allowedFields = ['full_name', 'email','PhoneNumber','specialization'];
+    // Check if the doctor exists
+    const result = await pool.query(`SELECT COUNT(*) FROM doctors WHERE doctor_id = $1`, [doctor_id]);
+    if (parseInt(result.rows[0].count, 10) === 0) {
+        return res.status(404).json({ message: `Doctor with ID ${doctor_id} Not Found!` });
+    }
+
+    const updates = req.body;
+    const allowedFields = ['full_name', 'email','phone_number', 'age', 'available_days', 'hospital', 'password', 
+        'slot_duration', 'specialization', 'verification_image_url', 'working_hours', 'date_of_birth', 'national_id'] ;
     const setClause = [];
     const values = [];
 
@@ -70,18 +78,11 @@ const updateDoctor = async (req, res) => {
     values.push(doctor_id);
 
     try {
-        const result = await pool.query(
-            `UPDATE doctors SET ${setClause.join(', ')} WHERE doctor_id = $${values.length} RETURNING *`,
-            values
-        );
+        const updateQuery = `UPDATE doctors SET ${setClause.join(', ')} WHERE doctor_id = $${values.length} RETURNING ${setClause.map(f => f.split(' = ')[0]).join(', ')}`;
+        const updateResult = await pool.query(updateQuery, values);
 
-        // Check if the doctor was found
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Doctor not found' });
-        }
-
-        // Return the updated doctor data
-        return res.status(200).json(result.rows[0]);
+        // Return only the updated fields
+        return res.status(200).json({ message: "Doctor updated successfully", updatedFields: updateResult.rows[0] });
     } catch (error) {
         console.error(error);
         return res.status(500).json({ error: 'Failed to update doctor' });

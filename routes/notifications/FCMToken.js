@@ -1,6 +1,7 @@
-const { pool } = require('../../../model/configration');
+const { pool } = require('../../model/configration');
 
 async function updateFcmToken(id, type, fcmToken) {
+
     try {
         let query = '';
         let values = [];
@@ -8,8 +9,8 @@ async function updateFcmToken(id, type, fcmToken) {
         if (type === 'd') {
             query = `UPDATE doctors SET fcm_token = $1 WHERE doctor_id = $2;`; 
             values = [fcmToken, id];
-        } else if (type == "p") {
-            query = `UPDATE patients SET fcm_token = $1WHERE patient_id = $2;`;
+        } else if (type === 'p') {
+            query = `UPDATE patients SET fcm_token = $1 WHERE patient_id = $2;`;
             values = [fcmToken, id];
         } else {
             throw new Error('Invalid user type. Must be "d" or "p".');

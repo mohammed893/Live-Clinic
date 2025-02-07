@@ -4,7 +4,7 @@ const PORT = 3000 ;
 const server = http.createServer(app);
 // const socketIo = require('socket.io');
 const { pool , database}= require('./model/configration');
-const { initializeSocket } = require('./routes/notifications/notifications.controller');
+const { initializeSocket } = require('./routes/notifications/socket.controller');
 
 async function startServer() {
     //connecting to SQL database 

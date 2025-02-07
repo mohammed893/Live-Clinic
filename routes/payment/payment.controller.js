@@ -5,7 +5,7 @@ require('dotenv').config();
 const PAYMOB_HMAC_SECRET = process.env.PAYMOB_HMAC_SECRET;
 const PAYMOB_INTENTION_URL = process.env.PAYMOB_INTENTION_URL;
 const PAYMOB_TOKEN = process.env.PAYMOB_TOKEN;
-const PAYMOB_INTERGRATION_ID = parseInt(process.env.PAYMOB_INTERGRATION_ID);
+const PAYMOB_INTEGRATION_ID = parseInt(process.env.PAYMOB_INTEGRATION_ID);
 const PAYMOB_PUBLIC_KEY = process.env.PAYMOB_PUBLIC_KEY;
 const { fetchData, callUpdateBilling } = require('./databaseOperations')
 
@@ -18,7 +18,7 @@ const orderToPaymob = async (data) => {
     const payload = {
         amount: data.amount,
         currency: 'EGP',
-        payment_methods: [PAYMOB_INTERGRATION_ID],
+        payment_methods: [PAYMOB_INTEGRATION_ID],
         billing_data: {
             first_name: data.firstName,
             last_name: data.lastName,
@@ -89,8 +89,8 @@ const handleCallback = async(req, res) => {
 // make order function
 const makeOrder = async(req, res) => {
     try {
-        // const userId = req.userID;
-        const { userId, slot_id, appointment_date, consultation_type, amount} = req.body;
+        const userId = req.userID;
+        const { slot_id, appointment_date, consultation_type, amount} = req.body;
         const {fullName, phoneNumber, email, doctorId } = await fetchData(slot_id, userId);
 
         const dataOfPayment = { 

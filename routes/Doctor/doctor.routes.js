@@ -3,8 +3,8 @@ const doctorRouter = express.Router();
 const doctorsController = require('./doctor.controller');
 const {verifyToken} = require('../../middleWare/verifyToken');
 
-doctorRouter.get('/', doctorsController.getAllDoctors);
-doctorRouter.get('/profile', verifyToken, doctorsController.getDoctor);
+doctorRouter.get('/', verifyToken, doctorsController.getAllDoctors);
+doctorRouter.get('/doctor_id', verifyToken, doctorsController.getDoctor);
 doctorRouter.delete('/', verifyToken, doctorsController.deleteDoctor);
 doctorRouter.put('/', verifyToken, doctorsController.updateDoctor);
 doctorRouter.post('/', verifyToken , doctorsController.generateSlots);

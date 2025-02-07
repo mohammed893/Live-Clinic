@@ -11,9 +11,11 @@ const verifyToken = (req, res, next) => {
     jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
             console.log(err)
-            return res.status(401).json({ error: 'Failed to authenticate token' });
+            return res.status(401).json({ valid: false });
         }
+        console.log(decoded);
         req.userID = decoded.id;
+        req.userType = decoded.type;
         next();
     });
 };

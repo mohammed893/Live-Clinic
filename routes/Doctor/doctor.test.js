@@ -44,23 +44,23 @@ describe('Doctor Controller Tests', () => {
     // test getDoctor
     test('should return a specific doctor', async () => {
         const response = await request(app)
-            .get('/doctors/profile')
-            .set('Authorization', `Bearer ${token}`);
+            .get(`/doctors/${doctorId}`);
         console.log('Response for getDoctor:', response.body);
         expect(response.status).toBe(200);
-    });
+    });    
 
     // test updateDoctor
     test('should update doctor details', async () => {
-        const updates = { full_name: 'doctor updeated' };
+        const updates = { full_name: 'doctor updated' };
         const response = await request(app)
             .put('/doctors') 
             .send(updates)
             .set('Authorization', `Bearer ${token}`);
+    
+        console.log(response.body);
         expect(response.status).toBe(200);
-        expect(response.body.full_name).toBe(updates.full_name);
+        expect(response.body.updatedFields.full_name).toBe(updates.full_name);
     });
-
     // test deleteDoctor
     test('should delete a doctor', async () => {
         const response = await request(app)
@@ -69,15 +69,15 @@ describe('Doctor Controller Tests', () => {
         expect(response.status).toBe(200);
         expect(response.body).toEqual({ message: 'Doctor deleted successfully' });
     });
-    // test delete when the doctor already exists
+    // test delete when the doctor already not exists
     test('should return 404 if doctor not found when deleting', async () => {
-        await pool.query('DELETE FROM doctors'); 
-        const response = await request(app)
-            .delete('/doctors')
-            .set('Authorization', `Bearer ${token}`);
-        expect(response.status).toBe(404);
-        expect(response.body).toEqual({ error: 'Doctor not found' });
-    });
+    await pool.query('DELETE FROM doctors WHERE doctor_id = $1', [doctorId]); 
+    const response = await request(app)
+        .delete('/doctors')
+        .set('Authorization', `Bearer ${token}`);
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'Doctor not found' });
+});
     // test generateSlots
     test('should generate slots when force is true', async () => {
         console.log('Decoded Token:', jwt.decode(token));
