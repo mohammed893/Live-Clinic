@@ -25,7 +25,7 @@ const login = async (req, res) => {
                 return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
             }
 
-            const token = jwt.sign({ id: doctor.doctor_id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+            const token = jwt.sign({ id: doctor.doctor_id, type: "d"}, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
             console.log("Login successful for doctor:", doctor.doctor_id);
             return res.status(200).json({ status: 'success', id: doctor.doctor_id, token: token });
 
@@ -43,7 +43,7 @@ const login = async (req, res) => {
                 return res.status(401).json({ status: 'error', message: 'Invalid email or password' });
             }
 
-            const token = jwt.sign({ id: patient.patient_id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+            const token = jwt.sign({ id: patient.patient_id , type: "p"}, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
             console.log("Login successful for patient:", patient.patient_id);
             return res.status(200).json({ status: 'success', id: patient.patient_id, token: token });
         }
@@ -60,7 +60,7 @@ const login = async (req, res) => {
 const register = async (req, res) => {
     const { fullname, email, password, Date_of_birth, Gender, PhoneNumber, Age, Hospital, nationalID, verification, available_days, type, working_hours, slot_duration, timezone, specialization, experience, follow_up, insurance_id } = req.body;
     const connection = await pool.connect();
-    const followUpValue = follow_up || false ;
+    const followUpValue = follow_up || false;
     try {
         const tableName = type === 'd' ? 'doctors' : 'patients';
 
@@ -73,24 +73,40 @@ const register = async (req, res) => {
             }
         }
 
+        let userId;
+
         if (tableName === 'doctors') {
-            await connection.query(
-                `INSERT INTO doctors (full_name, email, PASSWORD, date_of_birth, gender, phone_number, age, hospital, national_id, verification_image_url, available_days, working_hours, slot_duration, timezone, specialization, experience)
-                VALUES ($1, $2 ,crypt($3, gen_salt('bf')), $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15, $16)`,
-                [fullname, email, password, Date_of_birth, Gender, PhoneNumber, Age, Hospital, nationalID, verification, available_days, working_hours, slot_duration, timezone, specialization, experience]
-            );
+            const insertDoctorQuery = `
+                INSERT INTO doctors (full_name, email, PASSWORD, date_of_birth, gender, phone_number, age, hospital, national_id, verification_image_url, available_days, working_hours, slot_duration, timezone, specialization, experience)
+                VALUES ($1, $2, crypt($3, gen_salt('bf')), $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14, $15, $16)
+                RETURNING doctor_id
+            `;
+            const doctorResult = await connection.query(insertDoctorQuery, [fullname, email, password, Date_of_birth, Gender, PhoneNumber, Age, Hospital, nationalID, verification, available_days, working_hours, slot_duration, timezone, specialization, experience]);
+            userId = doctorResult.rows[0].doctor_id;
+            console.log('from DB' , userId);
+
             console.log("Doctor registered successfully:", fullname);
         } else {
-            await connection.query(
-                `INSERT INTO patients (full_name, email, PASSWORD, date_of_birth, gender, phone_number, follow_up, insurance_id)
-                VALUES ($1, $2 ,crypt($3, gen_salt('bf')), $4, $5, $6, $7, $8);`,
-                [fullname, email, password, Date_of_birth, Gender, PhoneNumber, followUpValue, insurance_id]
-            );
+            const insertPatientQuery = `
+                INSERT INTO patients (full_name, email, PASSWORD, date_of_birth, gender, phone_number, follow_up, insurance_id)
+                VALUES ($1, $2, crypt($3, gen_salt('bf')), $4, $5, $6, $7, $8)
+                RETURNING patient_id
+            `;
+            const patientResult = await connection.query(insertPatientQuery, [fullname, email, password, Date_of_birth, Gender, PhoneNumber, followUpValue, insurance_id]);
+            userId = patientResult.rows[0].patient_id;
+            console.log('from DB' , userId);
+
             console.log("Patient registered successfully:", fullname);
         }
 
-        const newToken = jwt.sign({ id: email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
-        return res.status(201).json({ status: 'success', message: `${type === 'd' ? 'Doctor' : 'Patient'} registered successfully`, token: newToken });
+        // Include id and type in the JWT payload
+        const newToken = jwt.sign({ id: userId, type:type }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' });
+
+        return res.status(201).json({
+            status: 'success',
+            message: `${type === 'd' ? 'Doctor' : 'Patient'} registered successfully`,
+            token: newToken
+        });
 
     } catch (err) {
         console.error("Error in registration:", err);

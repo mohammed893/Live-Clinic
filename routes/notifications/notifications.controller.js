@@ -89,7 +89,7 @@ async function resetFcmToken(req, res) {
     const type = req.userType;
 
     if (!(await isUserExist(id, type))){
-        return res.status(404),json({message: `User With ID ${id} and type ${type} Not Found`})
+        return res.status(404).json({message: `User With ID ${id} and type ${type} Not Found`})
     }
     if (!fcmToken){
         return res.status(400).json({message: 'Invalid fcm token'})
