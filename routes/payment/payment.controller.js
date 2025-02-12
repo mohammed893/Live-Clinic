@@ -22,11 +22,12 @@ const orderToPaymob = async (data) => {
         billing_data: {
             first_name: data.firstName,
             last_name: data.lastName,
-            phone_number: data.phoneNumber,
+            phone_number: data.phone_number,
             email: data.email,
         },
         expiration: 3600,
     };
+    console.log(payload)
     try {
         const {data: response} = await axios.post(PAYMOB_INTENTION_URL, payload, {
             headers: {
@@ -90,15 +91,16 @@ const handleCallback = async(req, res) => {
 const makeOrder = async(req, res) => {
     try {
         const userId = req.userID;
-        const { slot_id, appointment_date, consultation_type, amount} = req.body;
-        const {fullName, phoneNumber, email, doctorId } = await fetchData(slot_id, userId);
+        const slot_id = parseInt(req.body.slot_id, 10);
+        const { appointment_date, consultation_type, amount} = req.body;
+        const {full_name, email, phone_number, doctor_id } = await fetchData(slot_id, userId);
 
         const dataOfPayment = { 
             amount,
-            firstName: fullName.split(' ')[0],
-            lastName : fullName.split(' ')[1] || '',
+            firstName: full_name.split(' ')[0],
+            lastName : full_name.split(' ')[1] || '',
             email,
-            phoneNumber
+            phone_number
         };
 
         const paymobResponse = await orderToPaymob(dataOfPayment);
@@ -110,7 +112,7 @@ const makeOrder = async(req, res) => {
         const clientSecret = paymobResponse.client_secret;
 
         const addBilling = await pool.query(`SELECT addnewbilling($1, $2, $3, $4, $5, $6, $7, $8)`, 
-            [userId, doctorId, slot_id, appointment_date, consultation_type, amount, clientSecret, orderId])
+            [userId, doctor_id, slot_id, appointment_date, consultation_type, amount, clientSecret, orderId])
 
         if(!addBilling.rows[0].addnewbilling){
             return res.status(400).json({

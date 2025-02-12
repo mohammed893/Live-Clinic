@@ -22,15 +22,14 @@ const fetchData = async(slot_id, patient_id) => {
             throw new Error('patient not exists')
         if (slotData.rows.length == 0)
             throw new Error('Slot not exists')
-        const { full_name: fullName, email, phone_number: phoneNumber } = patientDate.rows[0];
-        const { doctor_id: doctorId } = slotData.rows[0];
+        const { full_name, email, phone_number} = patientDate.rows[0];
+        const { doctor_id } = slotData.rows[0];
 
-        return { fullName, email, phoneNumber, doctorId };
+        return { full_name, email, phone_number, doctor_id };
     }catch(err){
         console.error('Error fetching data:', err.message);
         throw err;
     }
-    
 }
 
 module.exports = {

@@ -1,24 +1,39 @@
 const { pool }= require('../../model/configration');
 
-const bookingAppointment = async (req,res) => {
-    try{
-        const { patient_id } = req.userID;
-        const {doctor_id, slot_id, appointment_date, consultation_type, price, paymentkey, order_id} = req.body;
-        const result = await pool.query('SELECT addnewbilling($1, $2, $3, $4, $5, $6, $7, $8)', [patient_id, doctor_id, slot_id, appointment_date, consultation_type, price, paymentkey, order_id]);
+const bookingAppointment = async (req, res) => {
+    try {
+        const patient_id = req.userID;
+        const { doctor_id, slot_id, appointment_date, consultation_type, price, paymentkey, order_id } = req.body;
 
-        if (result.rowCount > 0){
-            // const query = await pool.query(`INSERT INTO appointments (patient_id, doctor_id, slot_id, appointment_date, consultation_type) 
-            // VALUES ($1, $2, $3, $4, $5) RETURNING *;`);
-            return res.status(201).json({ status: 'success', message: 'Appointment booked successfully', result });
-        } else {
-            return res.status(400).json({message : 'Booking Failed' })
+        if (!doctor_id || !slot_id || !appointment_date || !consultation_type || !price || !paymentkey || !order_id) {
+            return res.status(400).json({ status: 'error', message: 'Missing required fields' });
         }
-        
-    } catch (error){
-        console.error(error)
-        return res.status(500).json({ status: 'error' , error: 'Internal server error' });
+
+        const result = await pool.query(
+            'SELECT addnewbilling($1, $2, $3, $4, $5, $6, $7, $8)',
+            [patient_id, doctor_id, slot_id, appointment_date, consultation_type, price, paymentkey, order_id]
+        );
+
+        if (result.rows[0].addnewbilling) {
+            const query = await pool.query(
+                `INSERT INTO appointments (patient_id, doctor_id, slot_id, appointment_date, consultation_type) 
+                 VALUES ($1, $2, $3, $4, $5) RETURNING *;`,
+                [patient_id, doctor_id, slot_id, appointment_date, consultation_type]
+            );
+
+            return res.status(201).json({
+                status: 'success',
+                message: `Appointment booked successfully for user ${patient_id}`,
+                appointment: query.rows[0]
+            });
+        } else {
+            return res.status(400).json({ status: 'error', message: 'Booking failed' });
+        }
+    } catch (error) {
+        console.error('Error in bookingAppointment:', error);
+        return res.status(500).json({ status: 'error', message: 'Internal server error', error: error.message });
     }
-}
+};
 
 const cancelingAppointment = async (req,res) => {
     try {
