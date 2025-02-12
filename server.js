@@ -1,6 +1,6 @@
 const http = require('http');
 const app = require('./app');
-const PORT = 5000 ;
+const PORT = 3000 ;
 const server = http.createServer(app);
 // const socketIo = require('socket.io');
 const { pool , database}= require('./model/configration');
